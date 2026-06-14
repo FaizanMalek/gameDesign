@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video Poker: Jacks or Better</title>
+<link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@700,500&f[]=general-sans@400,500,600&display=swap" rel="stylesheet">
+<style>
+  :root{--felt:#15324a;--felt2:#0e2334;--line:#274860;--gold:#e0c15a;--card:#fbfaf5;--ink:#eef2f6;--dim:#9fb4c4;--red:#c0392b}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#091824;color:var(--ink);font-family:"General Sans",system-ui,sans-serif;min-height:100vh;padding:26px 16px 60px}
+  .wrap{max-width:640px;margin:0 auto}
+  h1{font-family:"Cabinet Grotesk";font-weight:700;font-size:28px;text-align:center;letter-spacing:-.01em}
+  .sub{text-align:center;color:var(--dim);font-size:13px;margin:6px 0 20px}
+  .table{background:linear-gradient(180deg,var(--felt),var(--felt2));border:1px solid var(--line);border-radius:12px;padding:18px}
+
+  /* paytable */
+  .pay{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px}
+  .pay td{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,.07)}
+  .pay td:first-child{text-align:left;color:var(--ink)}
+  .pay td:not(:first-child){text-align:center;font-family:"Cabinet Grotesk";font-weight:500;color:var(--dim);width:42px}
+  .pay tr.active td{color:var(--gold)}
+  .pay .betcol.on{color:var(--gold);background:rgba(224,193,90,.12);border-radius:3px}
+  .pay th{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);text-align:center;padding-bottom:6px}
+  .pay th:first-child{text-align:left}
+
+  .hand{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:8px 0 6px}
+  .slot{aspect-ratio:5/7;perspective:600px}
+  .cardEl{width:100%;height:100%;border-radius:8px;background:var(--card);color:#111;display:flex;flex-direction:column;
+    justify-content:space-between;padding:8px 9px;font-family:"Cabinet Grotesk";font-weight:700;cursor:pointer;
+    border:2px solid transparent;transition:.12s;user-select:none}
+  .cardEl.back{background:repeating-linear-gradient(45deg,#1c3b54,#1c3b54 6px,#173249 6px,#173249 12px);cursor:default}
+  .cardEl .tr{font-size:22px;line-height:1}.cardEl .br{align-self:flex-end;font-size:22px;transform:rotate(180deg)}
+  .cardEl.red{color:var(--red)}
+  .cardEl.held{border-color:var(--gold)}
+  .holdlab{text-align:center;font-size:11px;letter-spacing:.14em;text-transform:uppercase;height:16px;color:var(--gold);font-weight:600}
+  .panel{display:flex;justify-content:space-between;align-items:center;margin-top:16px;flex-wrap:wrap;gap:12px}
+  .meter .k{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .meter .v{font-family:"Cabinet Grotesk";font-weight:700;font-size:24px}
+  .acts{display:flex;gap:8px;align-items:center}
+  .btn{font-family:"Cabinet Grotesk";font-weight:700;border:none;border-radius:6px;padding:13px 22px;cursor:pointer;font-size:15px}
+  .deal{background:var(--gold);color:#1a1206}.deal:disabled{opacity:.45;cursor:not-allowed}
+  .betbtn{background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:13px 14px;cursor:pointer;font-weight:600}
+  .msg{text-align:center;margin-top:14px;min-height:24px;font-family:"Cabinet Grotesk";font-weight:700;font-size:18px;color:var(--gold)}
+  .odds{margin-top:16px;font-size:12.5px;color:var(--dim);line-height:1.7;border-top:1px solid var(--line);padding-top:14px}
+  .odds b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Video Poker</h1>
+  <div class="sub">Jacks or Better  ·  9/6 paytable  ·  return to player 99.54% with correct play</div>
+
+  <div class="table">
+    <table class="pay" id="paytable">
+      <thead><tr><th>Hand</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="hand" id="hand"></div>
+    <div class="hand" id="holds" style="margin-top:0"></div>
+
+    <div class="panel">
+      <div class="meter"><div class="k">Credits</div><div class="v" id="bal">200</div></div>
+      <div class="acts">
+        <button class="betbtn" id="betone">Bet One</button>
+        <button class="betbtn" id="betmax">Bet Max</button>
+        <button class="btn deal" id="deal">Deal</button>
+      </div>
+    </div>
+    <div class="msg" id="msg">Set your bet and press Deal.</div>
+
+    <div class="odds">
+      <b>How the math works.</b> The deck has 52 cards, so every five card hand has a known probability. The 9/6 name means a full house pays 9 and a flush pays 6, the two values that most affect the payback. Multiply each hand's pay by its chance of occurring with correct holding decisions and the whole game returns 99.54%, one of the highest in any casino. The skill is in which cards you hold, which is where strategy and math meet.
+    </div>
+  </div>
+</div>
+
+<script>
+const SUITS=['\u2660','\u2665','\u2666','\u2663']; // spade heart diamond club
+const RED=new Set([1,2]); // heart, diamond indices
+const RANKS=['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+// pay per 1 credit; index by hand key. col = bet-1
+const PAYTABLE=[
+  ['Royal Flush',[250,500,750,1000,4000]],
+  ['Straight Flush',[50,100,150,200,250]],
+  ['Four of a Kind',[25,50,75,100,125]],
+  ['Full House',[9,18,27,36,45]],
+  ['Flush',[6,12,18,24,30]],
+  ['Straight',[4,8,12,16,20]],
+  ['Three of a Kind',[3,6,9,12,15]],
+  ['Two Pair',[2,4,6,8,10]],
+  ['Jacks or Better',[1,2,3,4,5]],
+];
+let balance=200, bet=5, deck=[], hand=[], held=[false,false,false,false,false], phase='bet';
+const $=id=>document.getElementById(id);
+
+// build paytable rows
+const ptb=$('paytable').querySelector('tbody');
+PAYTABLE.forEach(([name,pays],ri)=>{
+  const tr=document.createElement('tr');tr.dataset.row=ri;
+  let cells='<td>'+name+'</td>';
+  pays.forEach((p,ci)=>cells+='<td class="betcol" data-col="'+ci+'">'+p+'</td>');
+  tr.innerHTML=cells;ptb.appendChild(tr);
+});
+function highlightBetCol(){
+  document.querySelectorAll('.betcol').forEach(td=>td.classList.toggle('on',+td.dataset.col===bet-1));
+}
+highlightBetCol();
+
+function newDeck(){
+  const d=[];
+  for(let s=0;s<4;s++)for(let r=0;r<13;r++)d.push({s,r});
+  for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]];}
+  return d;
+}
+function renderHand(faceDown){
+  const h=$('hand'), labs=$('holds');h.innerHTML='';labs.innerHTML='';
+  for(let i=0;i<5;i++){
+    const slot=document.createElement('div');slot.className='slot';
+    const c=document.createElement('div');
+    if(faceDown||!hand[i]){c.className='cardEl back';}
+    else{
+      const card=hand[i];
+      c.className='cardEl'+(RED.has(card.s)?' red':'')+(held[i]?' held':'');
+      const face=RANKS[card.r]+SUITS[card.s];
+      c.innerHTML='<div class="tr">'+face+'</div><div class="br">'+face+'</div>';
+      if(phase==='draw') c.onclick=()=>{held[i]=!held[i];renderHand(false);};
+    }
+    slot.appendChild(c);h.appendChild(slot);
+    const lab=document.createElement('div');lab.className='holdlab';
+    lab.textContent=(phase==='draw'&&held[i])?'HELD':'';labs.appendChild(lab);
+  }
+}
+
+// ---- hand evaluation ----
+function evaluate(cards){
+  const ranks=cards.map(c=>c.r).sort((a,b)=>a-b);
+  const suits=cards.map(c=>c.s);
+  const flush=suits.every(s=>s===suits[0]);
+  // straight (with A high already 12; also A-2-3-4-5 wheel)
+  let straight = ranks.every((r,i)=>i===0||r===ranks[i-1]+1);
+  const wheel = JSON.stringify(ranks)===JSON.stringify([0,1,2,3,12]);
+  if(wheel) straight=true;
+  const royal = flush && JSON.stringify(ranks)===JSON.stringify([8,9,10,11,12]);
+  // rank counts
+  const counts={};ranks.forEach(r=>counts[r]=(counts[r]||0)+1);
+  const groups=Object.entries(counts).sort((a,b)=>b[1]-a[1]); // [rank,count]
+  const top=groups[0][1], second=groups[1]?groups[1][1]:0;
+  if(royal) return 'Royal Flush';
+  if(straight&&flush) return 'Straight Flush';
+  if(top===4) return 'Four of a Kind';
+  if(top===3&&second===2) return 'Full House';
+  if(flush) return 'Flush';
+  if(straight) return 'Straight';
+  if(top===3) return 'Three of a Kind';
+  if(top===2&&second===2) return 'Two Pair';
+  if(top===2){ // pair: only pays if jacks or better (J=9,Q=10,K=11,A=12)
+    const pairRank=+groups[0][0];
+    if(pairRank>=9) return 'Jacks or Better';
+  }
+  return null;
+}
+const ROWINDEX={'Royal Flush':0,'Straight Flush':1,'Four of a Kind':2,'Full House':3,'Flush':4,'Straight':5,'Three of a Kind':6,'Two Pair':7,'Jacks or Better':8};
+
+$('betone').onclick=()=>{if(phase!=='bet')return;bet=bet%5+1;highlightBetCol();};
+$('betmax').onclick=()=>{if(phase!=='bet')return;bet=5;highlightBetCol();if(balance>=5)startDeal();};
+
+function startDeal(){
+  if(balance<bet){$('msg').textContent='Not enough credits.';return;}
+  balance-=bet;$('bal').textContent=balance;
+  deck=newDeck();hand=[deck.pop(),deck.pop(),deck.pop(),deck.pop(),deck.pop()];
+  held=[false,false,false,false,false];phase='draw';
+  document.querySelectorAll('.pay tr').forEach(t=>t.classList.remove('active'));
+  renderHand(false);
+  $('deal').textContent='Draw';$('msg').textContent='Tap cards to HOLD, then Draw.';
+}
+function doDraw(){
+  for(let i=0;i<5;i++) if(!held[i]) hand[i]=deck.pop();
+  phase='bet';renderHand(false);
+  const result=evaluate(hand);
+  if(result){
+    const pay=PAYTABLE[ROWINDEX[result]][1][bet-1];
+    balance+=pay;$('bal').textContent=balance;
+    const row=document.querySelector('.pay tr[data-row="'+ROWINDEX[result]+'"]');
+    if(row)row.classList.add('active');
+    $('msg').textContent=result+'  +'+pay;
+  } else {
+    $('msg').textContent='No win. Deal again.';
+  }
+  $('deal').textContent='Deal';
+}
+$('deal').onclick=()=>{ if(phase==='bet') startDeal(); else doDraw(); };
+renderHand(true);
+</script>
+</body>
+</html>

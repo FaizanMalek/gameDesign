@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chess</title>
+<link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@700,500&f[]=general-sans@400,500&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#1c1a17;--panel:#262320;--ink:#ece7dd;--dim:#9a9286;--gold:#cf9b46;
+    --light:#e9dcc3;--dark:#9a7350;--sel:#cf9b46;--move:rgba(207,155,70,.55);--chk:#c0473b}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:"General Sans",system-ui,sans-serif;
+    min-height:100vh;padding:26px 16px 60px;display:flex;flex-direction:column;align-items:center}
+  h1{font-family:"Cabinet Grotesk";font-weight:700;font-size:28px;letter-spacing:-.01em}
+  .sub{color:var(--dim);font-size:13px;margin:6px 0 18px}
+  .controls{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;justify-content:center}
+  .controls button{font-family:"Cabinet Grotesk";font-weight:500;font-size:13px;padding:9px 14px;border-radius:6px;
+    border:1px solid #3a352f;background:var(--panel);color:var(--ink);cursor:pointer;transition:.15s}
+  .controls button:hover{border-color:var(--gold)}
+  .controls button.on{background:var(--gold);color:#1a1206;border-color:var(--gold)}
+  .status{font-family:"Cabinet Grotesk";font-weight:500;margin-bottom:12px;min-height:22px;color:var(--gold);font-size:16px}
+  .board{display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);
+    width:min(92vw,520px);aspect-ratio:1/1;
+    border:6px solid #3a312a;border-radius:6px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.5)}
+  .sq{position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;
+    font-size:min(9vw,46px);line-height:1}
+  .sq.light{background:var(--light)} .sq.dark{background:var(--dark)}
+  .sq.sel{box-shadow:inset 0 0 0 4px var(--sel)}
+  .sq.check{box-shadow:inset 0 0 0 4px var(--chk)}
+  .pw{color:#fafafa;text-shadow:0 0 2px #000,0 1px 2px rgba(0,0,0,.55)}
+  .pb{color:#181512;text-shadow:0 0 2px rgba(255,255,255,.5),0 1px 1px rgba(255,255,255,.3)}
+  .dot{position:absolute;width:26%;height:26%;border-radius:50%;background:var(--move);pointer-events:none}
+  .dot.cap{width:84%;height:84%;background:transparent;border:4px solid var(--move);border-radius:50%}
+  .meta{margin-top:16px;font-size:12.5px;color:var(--dim);max-width:520px;line-height:1.7;text-align:center}
+</style>
+</head>
+<body>
+  <h1>Chess</h1>
+  <div class="sub">Two players, or play the computer. Full legal moves, check and checkmate.</div>
+  <div class="controls">
+    <button id="m2" class="on">Two players</button>
+    <button id="mai">Vs computer</button>
+    <button id="newg">New game</button>
+  </div>
+  <div class="status" id="status">White to move</div>
+  <div class="board" id="board"></div>
+  <div class="meta">A clean implementation of the core rules: every piece moves legally, you cannot leave your own king in check, and the game ends on checkmate or stalemate. Pawns promote to a queen. Castling and en passant are left out to keep the code readable.</div>
+
+<script>
+// pieces: {c:'w'|'b', t:'p'|'n'|'b'|'r'|'q'|'k'}
+const GLYPH={w:{k:'\u2654',q:'\u2655',r:'\u2656',b:'\u2657',n:'\u2658',p:'\u2659'},
+             b:{k:'\u265A',q:'\u265B',r:'\u265C',b:'\u265D',n:'\u265E',p:'\u265F'}};
+const VAL={p:1,n:3,b:3,r:5,q:9,k:100};
+let board, turn, selected, legalCache, mode='2p', gameOver;
+const $=id=>document.getElementById(id);
+
+function start(){
+  const back=['r','n','b','q','k','b','n','r'];
+  board=[];
+  board[0]=back.map(t=>({c:'b',t}));
+  board[1]=Array(8).fill().map(()=>({c:'b',t:'p'}));
+  for(let r=2;r<6;r++)board[r]=Array(8).fill(null);
+  board[6]=Array(8).fill().map(()=>({c:'w',t:'p'}));
+  board[7]=back.map(t=>({c:'w',t}));
+  turn='w';selected=null;gameOver=false;
+  render();updateStatus();
+}
+const inB=(r,c)=>r>=0&&r<8&&c>=0&&c<8;
+
+// pseudo-legal moves (no self-check filter, no castling/en passant)
+function pseudo(bd,r,c){
+  const p=bd[r][c];if(!p)return[];const out=[];const me=p.c;
+  const add=(rr,cc)=>{if(!inB(rr,cc))return false;const t=bd[rr][cc];
+    if(!t){out.push([rr,cc]);return true;} if(t.c!==me)out.push([rr,cc]); return false;};
+  const ray=(dr,dc)=>{let rr=r+dr,cc=c+dc;while(inB(rr,cc)){const t=bd[rr][cc];
+    if(!t){out.push([rr,cc]);}else{if(t.c!==me)out.push([rr,cc]);break;}rr+=dr;cc+=dc;}};
+  if(p.t==='p'){
+    const dir=me==='w'?-1:1, startRow=me==='w'?6:1;
+    if(inB(r+dir,c)&&!bd[r+dir][c]){out.push([r+dir,c]);
+      if(r===startRow&&!bd[r+2*dir][c])out.push([r+2*dir,c]);}
+    for(const dc of[-1,1]){const rr=r+dir,cc=c+dc;
+      if(inB(rr,cc)&&bd[rr][cc]&&bd[rr][cc].c!==me)out.push([rr,cc]);}
+  } else if(p.t==='n'){
+    [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]].forEach(([dr,dc])=>add(r+dr,c+dc));
+  } else if(p.t==='k'){
+    for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++)if(dr||dc)add(r+dr,c+dc);
+  } else {
+    if(p.t==='r'||p.t==='q'){ray(-1,0);ray(1,0);ray(0,-1);ray(0,1);}
+    if(p.t==='b'||p.t==='q'){ray(-1,-1);ray(-1,1);ray(1,-1);ray(1,1);}
+  }
+  return out;
+}
+// is square (r,c) attacked by color 'by'?
+function attacked(bd,r,c,by){
+  // knights
+  for(const [dr,dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]){
+    const rr=r+dr,cc=c+dc;if(inB(rr,cc)){const t=bd[rr][cc];if(t&&t.c===by&&t.t==='n')return true;}}
+  // king adjacency
+  for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){if(!dr&&!dc)continue;
+    const rr=r+dr,cc=c+dc;if(inB(rr,cc)){const t=bd[rr][cc];if(t&&t.c===by&&t.t==='k')return true;}}
+  // pawns: a 'by' pawn attacks toward its moving direction
+  const pdir=by==='w'?1:-1; // a white pawn sits one row BELOW the square it attacks (white moves up)
+  for(const dc of[-1,1]){const rr=r+pdir,cc=c+dc;
+    if(inB(rr,cc)){const t=bd[rr][cc];if(t&&t.c===by&&t.t==='p')return true;}}
+  // sliding
+  const slide=(dirs,types)=>{for(const[dr,dc]of dirs){let rr=r+dr,cc=c+dc;
+    while(inB(rr,cc)){const t=bd[rr][cc];if(t){if(t.c===by&&types.includes(t.t))return true;break;}rr+=dr;cc+=dc;}}return false;};
+  if(slide([[-1,0],[1,0],[0,-1],[0,1]],['r','q']))return true;
+  if(slide([[-1,-1],[-1,1],[1,-1],[1,1]],['b','q']))return true;
+  return false;
+}
+function findKing(bd,color){for(let r=0;r<8;r++)for(let c=0;c<8;c++){const p=bd[r][c];if(p&&p.c===color&&p.t==='k')return[r,c];}return null;}
+function cloneApply(bd,fr,fc,tr,tc){
+  const nb=bd.map(row=>row.map(p=>p?{...p}:null));
+  const p=nb[fr][fc];nb[tr][tc]=p;nb[fr][fc]=null;
+  if(p.t==='p'&&(tr===0||tr===7))nb[tr][tc]={c:p.c,t:'q'}; // auto-promote
+  return nb;
+}
+function legal(bd,r,c){
+  const p=bd[r][c];if(!p)return[];
+  return pseudo(bd,r,c).filter(([tr,tc])=>{
+    const nb=cloneApply(bd,r,c,tr,tc);const k=findKing(nb,p.c);
+    return k&&!attacked(nb,k[0],k[1],p.c==='w'?'b':'w');
+  });
+}
+function allMoves(bd,color){const ms=[];for(let r=0;r<8;r++)for(let c=0;c<8;c++){const p=bd[r][c];
+  if(p&&p.c===color)legal(bd,r,c).forEach(m=>ms.push([r,c,m[0],m[1]]));}return ms;}
+
+function render(){
+  const el=$('board');el.innerHTML='';
+  const kingInCheck=(()=>{const k=findKing(board,turn);return k&&attacked(board,k[0],k[1],turn==='w'?'b':'w')?k:null;})();
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+    const sq=document.createElement('div');
+    sq.className='sq '+((r+c)%2?'dark':'light');
+    const p=board[r][c];
+    if(p){sq.innerHTML='<span class="'+(p.c==='w'?'pw':'pb')+'">'+GLYPH[p.c][p.t]+'</span>';}
+    if(selected&&selected[0]===r&&selected[1]===c)sq.classList.add('sel');
+    if(kingInCheck&&kingInCheck[0]===r&&kingInCheck[1]===c)sq.classList.add('check');
+    if(selected&&legalCache&&legalCache.some(m=>m[0]===r&&m[1]===c)){
+      const dot=document.createElement('div');dot.className='dot'+(board[r][c]?' cap':'');sq.appendChild(dot);}
+    sq.onclick=()=>clickSq(r,c);
+    el.appendChild(sq);
+  }
+}
+function clickSq(r,c){
+  if(gameOver)return;
+  if(mode==='ai'&&turn==='b')return;
+  const p=board[r][c];
+  if(selected){
+    if(legalCache.some(m=>m[0]===r&&m[1]===c)){doMove(selected[0],selected[1],r,c);return;}
+    if(p&&p.c===turn){selected=[r,c];legalCache=legal(board,r,c);render();return;}
+    selected=null;legalCache=null;render();return;
+  }
+  if(p&&p.c===turn){selected=[r,c];legalCache=legal(board,r,c);render();}
+}
+function doMove(fr,fc,tr,tc){
+  board=cloneApply(board,fr,fc,tr,tc);
+  selected=null;legalCache=null;turn=turn==='w'?'b':'w';
+  render();const ended=updateStatus();
+  if(!ended&&mode==='ai'&&turn==='b')setTimeout(aiMove,350);
+}
+function aiMove(){
+  const moves=allMoves(board,'b');if(!moves.length)return;
+  let best=[],bestScore=-1;
+  for(const m of moves){const target=board[m[2]][m[3]];const s=target?VAL[target.t]:0;
+    if(s>bestScore){bestScore=s;best=[m];}else if(s===bestScore)best.push(m);}
+  const pick=best[Math.floor(Math.random()*best.length)];
+  doMove(pick[0],pick[1],pick[2],pick[3]);
+}
+function updateStatus(){
+  const moves=allMoves(board,turn);
+  const k=findKing(board,turn);
+  const inCheck=k&&attacked(board,k[0],k[1],turn==='w'?'b':'w');
+  const who=turn==='w'?'White':'Black';
+  if(moves.length===0){
+    gameOver=true;
+    $('status').textContent=inCheck?('Checkmate. '+(turn==='w'?'Black':'White')+' wins.'):'Stalemate. Draw.';
+    return true;
+  }
+  $('status').textContent=who+' to move'+(inCheck?', check':'');
+  return false;
+}
+$('m2').onclick=()=>{mode='2p';$('m2').classList.add('on');$('mai').classList.remove('on');start();};
+$('mai').onclick=()=>{mode='ai';$('mai').classList.add('on');$('m2').classList.remove('on');start();};
+$('newg').onclick=start;
+start();
+</script>
+</body>
+</html>
