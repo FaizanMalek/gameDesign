@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plinko</title>
+<link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@700,500&f[]=general-sans@400,500,600&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0c1119;--panel:#141c28;--line:#26303f;--ink:#eef2f7;--dim:#93a3b5;--gold:#e0c15a;--chip:#e0c15a}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#070b11;color:var(--ink);font-family:"General Sans",system-ui,sans-serif;min-height:100vh;padding:24px 16px 60px}
+  .wrap{max-width:620px;margin:0 auto}
+  h1{font-family:"Cabinet Grotesk";font-weight:700;font-size:28px;text-align:center;letter-spacing:-.01em}
+  .sub{text-align:center;color:var(--dim);font-size:13px;margin:6px 0 18px}
+  .board{background:linear-gradient(180deg,var(--panel),var(--bg));border:1px solid var(--line);border-radius:14px;padding:14px}
+  svg{width:100%;display:block}
+  .peg{fill:#41506580}
+  .chip{fill:var(--chip);filter:drop-shadow(0 0 3px rgba(224,193,90,.6))}
+  .binrect{stroke:rgba(255,255,255,.08);stroke-width:.2}
+  .binlab{font-family:"Cabinet Grotesk";font-weight:700;fill:#10151c;text-anchor:middle}
+  .binflash{animation:flash .6s ease}
+  @keyframes flash{0%{opacity:.4}50%{opacity:1}100%{opacity:1}}
+
+  .panel{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-top:16px}
+  .meter .k{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+  .meter .v{font-family:"Cabinet Grotesk";font-weight:700;font-size:24px}
+  .betbox{display:flex;align-items:center;gap:8px}
+  .betbox button{width:38px;height:38px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:20px;cursor:pointer}
+  .betbox .amt{font-family:"Cabinet Grotesk";font-weight:700;font-size:18px;min-width:52px;text-align:center}
+  .drop{font-family:"Cabinet Grotesk";font-weight:700;border:none;border-radius:8px;padding:14px 28px;cursor:pointer;font-size:16px;background:var(--gold);color:#1a1206}
+  .drop:disabled{opacity:.5;cursor:not-allowed}
+  .msg{text-align:center;margin-top:12px;min-height:22px;font-family:"Cabinet Grotesk";font-weight:700;font-size:17px;color:var(--gold)}
+  .hist{text-align:center;font-size:12px;color:var(--dim);margin-top:6px;min-height:16px;letter-spacing:.03em}
+  .odds{margin-top:16px;font-size:12.5px;color:var(--dim);line-height:1.7;border-top:1px solid var(--line);padding-top:14px}
+  .odds b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Plinko</h1>
+  <div class="sub">Drop the chip. Where it lands is pure probability. Return to player <span id="rtp">99.4%</span></div>
+
+  <div class="board">
+    <svg id="svg" viewBox="0 0 100 96"></svg>
+    <div class="panel">
+      <div class="meter"><div class="k">Balance</div><div class="v" id="bal">1000</div></div>
+      <div class="betbox">
+        <button id="dn">&minus;</button>
+        <div class="amt" id="bet">10</div>
+        <button id="up">+</button>
+      </div>
+      <button class="drop" id="drop">Drop</button>
+    </div>
+    <div class="msg" id="msg">Set a bet and drop the chip.</div>
+    <div class="hist" id="hist"></div>
+
+    <div class="odds">
+      <b>How the math works.</b> Each chip falls through 12 rows of pegs, and at every peg it goes left or right with an even chance. So the landing slot follows the binomial distribution: the middle is by far the most common and pays little, while the outer slots are rare and pay big (29x at the very edge, which lands about 1 time in 2048). Multiplying each slot's chance by its multiplier gives the return, computed live below at <b><span id="rtp2">99.4%</span></b>. The whole game is one clean probability curve, shaped by how you set the multipliers.
+    </div>
+  </div>
+</div>
+
+<script>
+const N=12;                 // rows of decisions
+const BINS=N+1;             // 13 slots
+const M=[29,4,1.6,1.3,1.1,1,0.5,1,1.1,1.3,1.6,4,29];
+const cx=50, topY=9, rowH=5.4, S=6.4, pegR=0.85, chipR=1.7;
+const binY=topY+(N-1)*rowH+5, binH=8;
+const $=id=>document.getElementById(id);
+let balance=1000, bet=10, busy=false;
+
+// exact RTP from binomial (shown live to prove the number)
+function comb(n,k){let r=1;for(let i=0;i<k;i++)r=r*(n-i)/(i+1);return r;}
+(function(){let rtp=0;for(let k=0;k<=N;k++)rtp+=comb(N,k)/2**N*M[k];
+  const s=(rtp*100).toFixed(1)+'%';$('rtp').textContent=s;$('rtp2').textContent=s;})();
+
+function binColor(m){
+  if(m>=20)return'#d83a2b'; if(m>=4)return'#e0822e'; if(m>=1.5)return'#d6ad45';
+  if(m>1)return'#9fae7e'; if(m===1)return'#6f8186'; return'#516470';
+}
+const SVG='http://www.w3.org/2000/svg';
+function el(tag,attrs){const e=document.createElementNS(SVG,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);return e;}
+
+function pegX(r,j){return cx+(j-r/2)*S;}
+function binX(k){return cx+(k-N/2)*S;}
+
+function buildBoard(){
+  const svg=$('svg');svg.innerHTML='';
+  for(let r=0;r<N;r++)for(let j=0;j<=r;j++)
+    svg.appendChild(el('circle',{cx:pegX(r,j),cy:topY+r*rowH,r:pegR,class:'peg'}));
+  for(let k=0;k<BINS;k++){
+    const x=binX(k)-S/2+0.3, w=S-0.6;
+    svg.appendChild(el('rect',{x,y:binY,width:w,height:binH,rx:1.2,class:'binrect',fill:binColor(M[k]),id:'bin'+k}));
+    const t=el('text',{x:binX(k),y:binY+binH/2+1.6,class:'binlab','font-size':2.6});
+    t.textContent=(M[k]%1===0?M[k]:M[k])+'x';
+    svg.appendChild(t);
+  }
+  const chip=el('circle',{cx:cx,cy:2.5,r:chipR,class:'chip',id:'chip',opacity:0});
+  svg.appendChild(chip);
+}
+buildBoard();
+
+function ease(t){return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}
+function animatePath(dirs,bin,done){
+  // waypoints: start, then after each row, then into bin
+  const pts=[[cx,2.5]];
+  let sum=0;
+  for(let r=0;r<N;r++){sum+=dirs[r];pts.push([cx+sum*S/2, topY+r*rowH]);}
+  pts.push([binX(bin), binY+binH/2]); // drop into bin
+  const chip=$('chip');chip.setAttribute('opacity',1);
+  let seg=0;
+  function run(){
+    if(seg>=pts.length-1){done();return;}
+    const [x0,y0]=pts[seg], [x1,y1]=pts[seg+1];
+    const dur=seg===pts.length-2?260:90;
+    let start=null;
+    function step(ts){
+      if(!start)start=ts;
+      let t=Math.min((ts-start)/dur,1);const e=ease(t);
+      chip.setAttribute('cx',x0+(x1-x0)*e);
+      chip.setAttribute('cy',y0+(y1-y0)*e);
+      if(t<1)requestAnimationFrame(step);else{seg++;run();}
+    }
+    requestAnimationFrame(step);
+  }
+  run();
+}
+
+const hist=[];
+$('up').onclick=()=>{if(busy)return;bet=Math.min(bet+10,200);$('bet').textContent=bet;};
+$('dn').onclick=()=>{if(busy)return;bet=Math.max(bet-10,10);$('bet').textContent=bet;};
+$('drop').onclick=()=>{
+  if(busy)return;
+  if(balance<bet){$('msg').textContent='Not enough balance.';return;}
+  busy=true;$('drop').disabled=true;$('msg').textContent='';
+  balance-=bet;$('bal').textContent=balance;
+  const dirs=[];let rights=0;
+  for(let r=0;r<N;r++){const d=Math.random()<0.5?-1:1;dirs.push(d);if(d>0)rights++;}
+  const bin=rights;
+  animatePath(dirs,bin,()=>{
+    const mult=M[bin], won=Math.round(bet*mult);
+    balance+=won;$('bal').textContent=balance;
+    const b=$('bin'+bin);b.classList.remove('binflash');void b.offsetWidth;b.classList.add('binflash');
+    $('msg').textContent = mult>=1 ? ('Landed on '+mult+'x. You get '+won+'.') : ('Landed on '+mult+'x. You get '+won+' back.');
+    hist.unshift(mult+'x');if(hist.length>10)hist.pop();
+    $('hist').textContent='Recent: '+hist.join('  ');
+    busy=false;$('drop').disabled=false;
+  });
+};
+</script>
+</body>
+</html>

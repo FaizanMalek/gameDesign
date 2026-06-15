@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blackjack</title>
+<link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@700,500&f[]=general-sans@400,500,600&display=swap" rel="stylesheet">
+<style>
+  :root{--felt:#16402f;--felt2:#0e2b1f;--line:#2c5644;--gold:#e0c15a;--card:#fbfaf5;--ink:#eef2ee;--dim:#9fbcab;--red:#c0392b}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#081a12;color:var(--ink);font-family:"General Sans",system-ui,sans-serif;min-height:100vh;padding:24px 16px 60px}
+  .wrap{max-width:620px;margin:0 auto}
+  h1{font-family:"Cabinet Grotesk";font-weight:700;font-size:28px;text-align:center;letter-spacing:-.01em}
+  .sub{text-align:center;color:var(--dim);font-size:13px;margin:6px 0 18px}
+  .table{background:radial-gradient(120% 90% at 50% 0,var(--felt),var(--felt2));border:1px solid var(--line);border-radius:14px;padding:20px 18px}
+  .side{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);display:flex;justify-content:space-between;align-items:center;margin:4px 2px}
+  .side .tot{font-family:"Cabinet Grotesk";font-weight:700;font-size:15px;color:var(--ink);letter-spacing:0}
+  .row{display:flex;gap:8px;min-height:96px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  .cardEl{width:66px;height:92px;border-radius:8px;background:var(--card);color:#111;display:flex;flex-direction:column;
+    justify-content:space-between;padding:7px 8px;font-family:"Cabinet Grotesk";font-weight:700;box-shadow:0 4px 10px rgba(0,0,0,.3)}
+  .cardEl.red{color:var(--red)} .cardEl .tr{font-size:19px;line-height:1}.cardEl .br{align-self:flex-end;font-size:19px;transform:rotate(180deg)}
+  .cardEl.back{background:repeating-linear-gradient(45deg,#1d4636,#1d4636 6px,#173a2c 6px,#173a2c 12px)}
+  .divider{height:1px;background:var(--line);margin:14px 0}
+  .panel{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-top:6px}
+  .meter .k{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+  .meter .v{font-family:"Cabinet Grotesk";font-weight:700;font-size:24px}
+  .betbox{display:flex;align-items:center;gap:8px}
+  .betbox button{width:36px;height:36px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);font-size:18px;cursor:pointer}
+  .betbox .amt{font-family:"Cabinet Grotesk";font-weight:700;font-size:18px;min-width:46px;text-align:center}
+  .acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:14px}
+  .btn{font-family:"Cabinet Grotesk";font-weight:700;border:none;border-radius:8px;padding:13px 20px;cursor:pointer;font-size:15px}
+  .primary{background:var(--gold);color:#1a1206}
+  .ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .msg{text-align:center;margin-top:14px;min-height:24px;font-family:"Cabinet Grotesk";font-weight:700;font-size:18px;color:var(--gold)}
+  .odds{margin-top:16px;font-size:12.5px;color:var(--dim);line-height:1.7;border-top:1px solid var(--line);padding-top:14px}
+  .odds b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Blackjack</h1>
+  <div class="sub">Beat the dealer to 21. Blackjack pays 3 to 2, and the dealer stands on 17.</div>
+
+  <div class="table">
+    <div class="side"><span>Dealer</span><span class="tot" id="dtot"></span></div>
+    <div class="row" id="dealer"></div>
+    <div class="divider"></div>
+    <div class="side"><span>You</span><span class="tot" id="ptot"></span></div>
+    <div class="row" id="player"></div>
+
+    <div class="msg" id="msg">Place a bet and deal.</div>
+
+    <div class="acts" id="acts">
+      <button class="btn ghost" id="hit" disabled>Hit</button>
+      <button class="btn ghost" id="stand" disabled>Stand</button>
+      <button class="btn ghost" id="double" disabled>Double</button>
+    </div>
+    <div class="panel">
+      <div class="meter"><div class="k">Balance</div><div class="v" id="bal">500</div></div>
+      <div class="betbox">
+        <button id="dn">&minus;</button>
+        <div class="amt" id="bet">25</div>
+        <button id="up">+</button>
+      </div>
+      <button class="btn primary" id="deal">Deal</button>
+    </div>
+
+    <div class="odds">
+      <b>How the math works.</b> A blackjack deck has known odds for every card, so the value of each decision can be computed exactly. The two rules that most help the player are built in: a natural blackjack pays 3 to 2, and the dealer must stand on 17. The dealer busts about 28% of the time, which is where most of the player's value comes from. Full blackjack with splitting and basic strategy returns about 99.5%. This casual build leaves splitting out to stay simple, so its house edge sits near 1%. The skill is in when to hit, stand, or double.
+    </div>
+  </div>
+</div>
+
+<script>
+const SUITS=['\u2660','\u2665','\u2666','\u2663'];
+const RED=new Set([1,2]);
+const RANKS=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+const $=id=>document.getElementById(id);
+let deck=[], pHand=[], dHand=[], balance=500, bet=25, inRound=false, dealerHidden=true, betLocked=0;
+
+function newDeck(){const d=[];for(let s=0;s<4;s++)for(let r=0;r<13;r++)d.push({s,r});
+  for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]];}return d;}
+function cardValue(r){if(r===0)return 11;if(r>=9)return 10;return r+1;} // A=11, 10/J/Q/K=10
+function handTotal(h){let t=0,aces=0;for(const c of h){t+=cardValue(c.r);if(c.r===0)aces++;}
+  while(t>21&&aces>0){t-=10;aces--;}return t;}
+function isBlackjack(h){return h.length===2&&handTotal(h)===21;}
+
+function cardHTML(c){const face=RANKS[c.r]+SUITS[c.s];
+  return '<div class="cardEl'+(RED.has(c.s)?' red':'')+'"><div class="tr">'+face+'</div><div class="br">'+face+'</div></div>';}
+function backHTML(){return '<div class="cardEl back"></div>';}
+
+function render(){
+  $('player').innerHTML=pHand.map(cardHTML).join('');
+  $('ptot').textContent=pHand.length?handTotal(pHand):'';
+  if(dealerHidden && dHand.length){
+    $('dealer').innerHTML=cardHTML(dHand[0])+backHTML();
+    $('dtot').textContent=cardValue(dHand[0].r);
+  } else {
+    $('dealer').innerHTML=dHand.map(cardHTML).join('');
+    $('dtot').textContent=dHand.length?handTotal(dHand):'';
+  }
+}
+function setActs(on){['hit','stand','double'].forEach(id=>$(id).disabled=!on);
+  $('double').disabled = !on || pHand.length!==2 || balance<betLocked;}
+function setDealEnabled(on){$('deal').disabled=!on;$('up').disabled=!on;$('dn').disabled=!on;}
+
+$('up').onclick=()=>{if(inRound)return;bet=Math.min(bet+25,200);$('bet').textContent=bet;};
+$('dn').onclick=()=>{if(inRound)return;bet=Math.max(bet-25,25);$('bet').textContent=bet;};
+
+$('deal').onclick=()=>{
+  if(inRound)return;
+  if(balance<bet){$('msg').textContent='Not enough balance.';return;}
+  deck=newDeck();pHand=[deck.pop(),deck.pop()];dHand=[deck.pop(),deck.pop()];
+  balance-=bet;betLocked=bet;$('bal').textContent=balance;
+  inRound=true;dealerHidden=true;$('msg').textContent='';
+  setDealEnabled(false);render();
+  if(isBlackjack(pHand)){ dealerHidden=false;render();
+    if(isBlackjack(dHand)){settle('push','Both have blackjack. Push.');}
+    else{const win=Math.round(betLocked*2.5);balance+=win;$('bal').textContent=balance;
+      settle('bj','Blackjack! You win '+(win-betLocked)+'.');}
+    return;
+  }
+  setActs(true);
+};
+$('hit').onclick=()=>{
+  if(!inRound)return;pHand.push(deck.pop());render();
+  const t=handTotal(pHand);
+  $('double').disabled=true;
+  if(t>21){dealerHidden=false;render();settle('lose','Bust at '+t+'. Dealer wins.');}
+  else if(t===21){stand();}
+};
+$('double').onclick=()=>{
+  if(!inRound||pHand.length!==2)return;
+  if(balance<betLocked){return;}
+  balance-=betLocked;betLocked*=2;$('bal').textContent=balance;
+  pHand.push(deck.pop());render();
+  const t=handTotal(pHand);
+  if(t>21){dealerHidden=false;render();settle('lose','Bust at '+t+'. Dealer wins.');}
+  else stand();
+};
+$('stand').onclick=stand;
+function stand(){
+  if(!inRound)return;
+  setActs(false);dealerHidden=false;render();
+  while(handTotal(dHand)<17){dHand.push(deck.pop());}
+  render();
+  const p=handTotal(pHand), d=handTotal(dHand);
+  if(d>21) finishWin('Dealer busts at '+d+'. You win.');
+  else if(p>d) finishWin('You win '+p+' to '+d+'.');
+  else if(p<d) settle('lose','Dealer wins '+d+' to '+p+'.');
+  else settle('push','Push at '+p+'.');
+}
+function finishWin(text){const win=betLocked*2;balance+=win;$('bal').textContent=balance;
+  settle('win',text+' You win '+betLocked+'.');}
+function settle(kind,text){
+  if(kind==='push'){balance+=betLocked;$('bal').textContent=balance;}
+  $('msg').textContent=text;inRound=false;setActs(false);setDealEnabled(true);
+}
+render();
+</script>
+</body>
+</html>

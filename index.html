@@ -74,6 +74,12 @@
   .file:hover .open-pill{border-color:var(--ember);color:var(--ember);background:var(--ember-soft)}
   .open-pill.play{background:var(--ember);border-color:var(--ember);color:#FCFBF7;box-shadow:0 2px 8px rgba(176,80,43,.25)}
   .file:hover .open-pill.play{background:#97401d;border-color:#97401d;color:#fff}
+  .file-group{border-bottom:1px solid var(--line)}
+  .file-group .file{border-bottom:none}
+  .subfiles{display:flex;gap:20px;padding:0 4px 16px 46px}
+  .subfiles a{font-size:13px;color:var(--ink2);text-decoration:none;border-bottom:1px solid var(--line2);padding-bottom:1px;transition:.15s}
+  .subfiles a:hover{color:var(--ember);border-color:var(--ember)}
+  @media(max-width:560px){.subfiles{padding-left:4px;flex-wrap:wrap;gap:14px}}
   .file.soon{cursor:default}
   .file.soon:hover{padding-left:4px}
   .file.soon .ft{color:var(--ink2)}
@@ -163,18 +169,35 @@
     <div class="sec-label">More work</div>
     <div class="proj-sub" style="margin-bottom:24px">Smaller builds that show range across casino formats and game logic. Each is playable and each casino game shows its own odds.</div>
     <div class="files" style="border-top:1px solid var(--line)">
-      <a class="file" href="./videopoker.html" target="_blank" rel="noopener">
-        <span class="num">01</span>
-        <span class="body"><span class="ft">Video Poker: Jacks or Better</span><div class="fd">The classic card machine, correct hand math and the 9/6 paytable at 99.5% RTP</div></span>
-        <span class="open-pill play">Play &rarr;</span>
-      </a>
+      <div class="file-group">
+        <a class="file" href="./plinko.html" target="_blank" rel="noopener">
+          <span class="num">01</span>
+          <span class="body"><span class="ft">Plinko</span><div class="fd">Drop a chip through 12 rows of pegs. Pure binomial probability, multipliers verified to a 99.4% return</div></span>
+          <span class="open-pill play">Play &rarr;</span>
+        </a>
+        <div class="subfiles">
+          <a href="./PLINKO_GDD.docx" target="_blank" rel="noopener">Design document</a>
+          <a href="./PLINKO_Math_Model.xlsx" target="_blank" rel="noopener">Math model</a>
+        </div>
+      </div>
+      <div class="file-group">
+        <a class="file" href="./blackjack.html" target="_blank" rel="noopener">
+          <span class="num">02</span>
+          <span class="body"><span class="ft">Blackjack</span><div class="fd">The most famous card game in any casino. Blackjack pays 3 to 2, dealer stands on 17, exact dealer odds modeled</div></span>
+          <span class="open-pill play">Play &rarr;</span>
+        </a>
+        <div class="subfiles">
+          <a href="./BLACKJACK_GDD.docx" target="_blank" rel="noopener">Design document</a>
+          <a href="./BLACKJACK_Math_Model.xlsx" target="_blank" rel="noopener">Math model</a>
+        </div>
+      </div>
       <a class="file" href="./roulette.html" target="_blank" rel="noopener">
-        <span class="num">02</span>
+        <span class="num">03</span>
         <span class="body"><span class="ft">European Roulette</span><div class="fd">A table game built on a single fixed edge, 97.3% return across every bet</div></span>
         <span class="open-pill play">Play &rarr;</span>
       </a>
       <a class="file" href="./chess.html" target="_blank" rel="noopener">
-        <span class="num">03</span>
+        <span class="num">04</span>
         <span class="body"><span class="ft">Chess</span><div class="fd">Full legal moves, check and checkmate, two players or a simple computer</div></span>
         <span class="open-pill play">Play &rarr;</span>
       </a>
